@@ -1,0 +1,55 @@
+use default;
+
+--Create the initial table to store the data
+--The data has been altered to use the "|" delimiter
+--  since some of the fields use a "," as part of their contents
+create table seinfeld (
+     ID INT,
+     Season FLOAT,
+     Episode FLOAT,
+     Title STRING,
+     AirDate STRING,
+     Writers STRING,
+     Director STRING,
+     SEID STRING)
+     ROW FORMAT DELIMITED FIELDS TERMINATED BY '|' tblproperties ("skip.header.line.count"="1");
+
+--The data has been altered to use the "|" delimiter
+--  since some of the fields use a "," as part of their contents.
+--  "and" and "/Story By" was also removed from the writers column to allow
+--  for easier splitting into an array.
+LOAD DATA LOCAL INPATH '/home/cloudera/Desktop/episode_info.csv' INTO TABLE seinfeld;
+
+--Create a secondary table that's identical to the first
+--  However, the writers column needs to be split to create an array<string> column
+create table seinfeld2 as
+    select ID, season, episode, title, airdate, split(writers,", ") as writers, director, seid
+    from seinfeld;
+
+--Each season comprises what percent of the total run?
+select e.season, e.count/f.total
+    from (select season, count(season) as count from seinfeld2 group by season) e
+    full outer join (select count(season) as total from seinfeld2) f;
+
+--How many episodes aired in 1997?
+select count(airdate)
+from seinfeld2
+where instr(airdate,"1997")>=1;
+
+--How many episodes did each director direct?
+select director, count(director)
+from seinfeld2
+group by director;
+
+--How many episodes per season did Larry David write?
+select season, count(ID) as count
+from (select ID, season, new_writers from seinfeld2 lateral view explode(writers) exploded_table as new_writers) t
+where t.new_writers = 'Larry David'
+group by season;
+
+--What percentage of episodes per season did Jerry Seinfeld write?
+select e.season, f.count/e.total as percent
+from (select season, count(season) as total from seinfeld2 group by season) e
+join (select season, count(season) as count from 
+    (select season, new_writers from seinfeld2 lateral view explode(writers) exploded_table as new_writers) t where t.new_writers = 'Jerry Seinfeld' group by season) f
+on (e.season = f.season);
