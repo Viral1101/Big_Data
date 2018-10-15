@@ -1,0 +1,64 @@
+--Create the coursera table to store the userID, the courses they have taken, and the topics the user is interested in.
+
+create table coursera (
+       user_id int primary key,
+       courses list<text>,
+       topics list<text>);
+
+--Insert the data into the table
+
+insert into coursera(user_id, courses, topics) VALUES (1,['R programming','Android programming'],['data science','statistics','programming','computer science']);
+insert into coursera(user_id, courses, topics) VALUES (2,['R programming','Bioinformatics','Phylogenetics'],['data science','statistics','biology','informatics','molecular biology','genetics']);
+insert into coursera(user_id, courses, topics) VALUES (3,['Basket Making','German','Russian'],['art','language']);
+insert into coursera(user_id, courses, topics) VALUES (4,['Android programming','Principles of MVC','Machine Learning'],['programming','web','machine learning']);
+insert into coursera(user_id, courses, topics) VALUES (5,['Inferential Statistics','The Data Scientists Toolbox','Regression'],['data science','statistics']);
+insert into coursera(user_id, courses, topics) VALUES (6,['R programming','Regression','Multilevel Analysis'],['data science','statistics']);
+
+
+--There is a new data science course available, identify the users that are interested in this topic.
+select user_id from coursera where topics contains 'data science' ALLOW FILTERING;
+
+--What percentage of users is the R programming course reaching?
+
+--To accomplish this question, an aggregate function needs to be specified.
+--  This requires a state and a final function to keep track of counts perform the final calculation.
+CREATE OR REPLACE FUNCTION countState( state tuple<int,int>, input list<text>, val text)
+CALLED ON NULL INPUT
+RETURNS tuple<int,int>
+LANGUAGE java AS
+$$
+//The state object persists to keep track of how many rows have an input list that contain the val
+// and the number of rows visited.
+	if (val != null){
+	int out=0;
+	for(int i=0;i<input.size();i++){
+		if (input.get(i).equals(val)){
+			out=1;
+		}
+	}
+	state.setInt(0, state.getInt(0)+out);
+	state.setInt(1, state.getInt(1)+1);
+}
+return state;
+$$;
+
+CREATE OR REPLACE FUNCTION countFinal (state tuple<int,int>)
+CALLED ON NULL INPUT
+RETURNS double
+LANGUAGE java AS
+$$
+	//use the total count of instances identified, and divide it by the total number of rows visited
+	if(state.getInt(1)==0) return null;
+	return ((double)state.getInt(0) / (double) state.getInt(1));
+$$;
+
+CREATE AGGREGATE percent(list<text>,text)
+SFUNC countState
+STYPE tuple<int,int>
+FINALFUNC countFinal
+INITCOND (0,0);
+
+select percent(courses,'R programming') from coursera;
+
+--What percentage of students are interested in biology that have taken the R programming course?
+select percent(topics,'biology') from coursera where courses contains 'R programming' ALLOW FILTERING;
